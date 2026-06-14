@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learning Rate Scheduler Playground</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']] },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] },
+      startup: { typeset: false }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <span class="header-icon">📈</span>
+      <div>
+        <h1>LR Scheduler Playground</h1>
+        <p class="subtitle">Interactive Learning Rate Scheduler Explorer</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <button id="themeToggle" class="btn-icon" title="Toggle dark/light mode">🌙</button>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebarToggle" title="Collapse sidebar">‹</button>
+
+      <div class="sb-section">
+        <label class="sb-label">Scheduler</label>
+        <select id="schedulerSelect" class="select-input">
+          <option value="constant">Constant</option>
+          <option value="step">Step Decay</option>
+          <option value="exponential">Exponential Decay</option>
+          <option value="polynomial">Polynomial Decay</option>
+          <option value="cosine" selected>Cosine Annealing</option>
+          <option value="cosine_warm">Cosine Annealing w/ Warm Restarts</option>
+          <option value="cyclic">Cyclic LR (Triangular)</option>
+          <option value="onecycle">OneCycle</option>
+          <option value="warmup_cosine">Warmup + Cosine</option>
+        </select>
+      </div>
+
+      <div class="sb-section">
+        <label class="sb-label">Presets</label>
+        <div class="preset-grid">
+          <button class="btn-preset" data-preset="resnet">ResNet</button>
+          <button class="btn-preset" data-preset="bert">BERT</button>
+          <button class="btn-preset" data-preset="gan">GAN</button>
+          <button class="btn-preset" data-preset="fast">OneCycle Fast</button>
+        </div>
+      </div>
+
+      <div class="sb-section" id="paramsSection">
+        <label class="sb-label">Parameters</label>
+        <div id="paramControls"></div>
+      </div>
+
+      <div class="sb-section">
+        <label class="sb-label">Training Phase</label>
+        <div id="phaseBar" class="phase-bar-wrap">
+          <div class="phase-bar" id="phaseBarInner"></div>
+          <div class="phase-labels">
+            <span class="phase-explore">Explore</span>
+            <span class="phase-converge">Converge</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main-content">
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="visualizer">📊 Visualizer</button>
+        <button class="tab-btn" data-tab="comparison">⚖️ Compare</button>
+        <button class="tab-btn" data-tab="training">🏋️ Training Sim</button>
+        <button class="tab-btn" data-tab="optimization">🎯 Optimization</button>
+      </nav>
+
+      <!-- TAB: VISUALIZER -->
+      <div class="tab-panel active" id="tab-visualizer">
+        <div class="panel-grid vis-grid">
+          <div class="card chart-main-card">
+            <div class="card-header">
+              <h2>Learning Rate Schedule</h2>
+              <div class="hstack gap-sm">
+                <button class="btn-sm" id="resetZoom">Reset Zoom</button>
+                <button class="btn-sm" id="exportPNG">PNG</button>
+                <button class="btn-sm" id="exportJSON">JSON</button>
+                <button class="btn-sm" id="exportCSV">CSV</button>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="lrChart"></canvas></div>
+          </div>
+          <div class="card formula-card">
+            <div class="card-header"><h2>Formula</h2></div>
+            <div id="formulaContent" class="formula-content"></div>
+          </div>
+          <div class="card explanation-card">
+            <div class="card-header"><h2>About this Scheduler</h2></div>
+            <div id="explanationContent" class="explanation-content"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: COMPARISON -->
+      <div class="tab-panel" id="tab-comparison">
+        <div class="card">
+          <div class="card-header">
+            <h2>Scheduler Comparison (up to 4)</h2>
+            <button class="btn-sm" id="resetZoomCmp">Reset Zoom</button>
+          </div>
+          <div id="comparisonSelectors" class="comparison-selectors"></div>
+          <div class="chart-wrap"><canvas id="comparisonChart"></canvas></div>
+          <div id="comparisonStats" class="comparison-stats"></div>
+        </div>
+      </div>
+
+      <!-- TAB: TRAINING SIMULATOR -->
+      <div class="tab-panel" id="tab-training">
+        <div class="panel-grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h2>Training &amp; Validation Loss</h2>
+              <div class="hstack gap-sm">
+                <button class="btn-primary" id="startTraining">▶ Start</button>
+                <button class="btn-sm" id="pauseTraining" disabled>⏸ Pause</button>
+                <button class="btn-sm" id="resetTraining">↺ Reset</button>
+                <button class="btn-sm" id="resetZoomTrain">Reset Zoom</button>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="trainingChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Live Learning Rate</h2>
+              <button class="btn-sm" id="resetZoomLiveLR">Reset Zoom</button>
+            </div>
+            <div class="chart-wrap"><canvas id="liveLRChart"></canvas></div>
+            <div id="trainingStats" class="training-stats"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: OPTIMIZATION -->
+      <div class="tab-panel" id="tab-optimization">
+        <div class="panel-grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h2>2D Loss Landscape</h2>
+              <div class="hstack gap-sm">
+                <button class="btn-primary" id="startOpt">▶ Start</button>
+                <button class="btn-sm" id="pauseOpt">⏸ Pause</button>
+                <button class="btn-sm" id="resetOpt">↺ Reset</button>
+              </div>
+            </div>
+            <div class="canvas-wrap"><canvas id="optCanvas"></canvas></div>
+            <div id="optStats" class="opt-stats"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Loss Over Epochs</h2>
+              <button class="btn-sm" id="resetZoomOptLoss">Reset Zoom</button>
+            </div>
+            <div class="chart-wrap"><canvas id="optLossChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
