@@ -6,6 +6,10 @@ An interactive, browser-based explorer for learning rate schedulers — visualiz
 
 ---
 
+▶ Live: [balayogig/learning-rate-scheduler](https://balayogig.github.io/learning-rate-scheduler/) — no install, nothing to set up.
+
+Co-developed by Balayogi G & Claude.
+
 ## Features
 
 ### 📊 Visualizer
